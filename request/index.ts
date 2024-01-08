@@ -1,18 +1,28 @@
-import axios from 'axios';
-import type { AxiosInstance } from 'axios';
-import type { RequestConfig } from './type';
+import axios from "axios";
+import type { AxiosInstance } from "axios";
+import type { RequestConfig } from "./type";
 
 class Request {
   instance: AxiosInstance;
+
+  // 初始化请求控制器
+  abortControllerMap: Map<string, AbortController>;
 
   // request实例 => axios的实例
   constructor(config: RequestConfig) {
     this.instance = axios.create(config);
 
+    // 初始化请求控制器
+    this.abortControllerMap = new Map();
+
     // 每个instance实例都添加拦截器
     this.instance.interceptors.request.use(
       (config) => {
-        // loading/token
+        const controller = new AbortController();
+        const url = config.url || "";
+        this.cancelRequest(url);
+        config.signal = controller.signal;
+        this.abortControllerMap.set(url, controller);
         return config;
       },
       (err) => {
@@ -21,6 +31,8 @@ class Request {
     );
     this.instance.interceptors.response.use(
       (res) => {
+        const url = res.config.url || "";
+        this.abortControllerMap.delete(url);
         return res.data;
       },
       (err) => {
@@ -63,17 +75,39 @@ class Request {
     });
   }
 
+  /**
+   * 取消全部请求
+   */
+  cancelAllRequest() {
+    for (const [, controller] of this.abortControllerMap) {
+      controller.abort();
+    }
+    this.abortControllerMap.clear();
+  }
+
+  /**
+   * 取消指定的请求
+   * @param url 待取消的请求URL
+   */
+  cancelRequest(url: string | string[]) {
+    const urlList = Array.isArray(url) ? url : [url];
+    for (const _url of urlList) {
+      this.abortControllerMap.get(_url)?.abort();
+      this.abortControllerMap.delete(_url);
+    }
+  }
+
   get<T = any>(config: RequestConfig<T>) {
-    return this.request({ ...config, method: 'GET' });
+    return this.request({ ...config, method: "GET" });
   }
   post<T = any>(config: RequestConfig<T>) {
-    return this.request({ ...config, method: 'POST' });
+    return this.request({ ...config, method: "POST" });
   }
   delete<T = any>(config: RequestConfig<T>) {
-    return this.request({ ...config, method: 'DELETE' });
+    return this.request({ ...config, method: "DELETE" });
   }
   patch<T = any>(config: RequestConfig<T>) {
-    return this.request({ ...config, method: 'PATCH' });
+    return this.request({ ...config, method: "PATCH" });
   }
 }
 
